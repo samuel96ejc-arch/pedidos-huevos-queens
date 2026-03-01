@@ -75,7 +75,8 @@ export default function App() {
     if (!user) return;
     const q = query(collection(db, 'pedidos_preventa'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const pedidosArray = [];
+      // AQUÍ ESTÁ EL ARREGLO: Agregamos : any[]
+      const pedidosArray: any[] = [];
       snapshot.forEach((doc) => {
         pedidosArray.push({ id: doc.id, ...doc.data() });
       });
