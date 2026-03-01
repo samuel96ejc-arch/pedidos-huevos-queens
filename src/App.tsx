@@ -243,10 +243,17 @@ export default function App() {
   // --- CAMBIAR ESTADO A ENTREGADO ---
   const cambiarEstadoPedido = async (id: string, estadoActual: string) => {
     const nuevoEstado = estadoActual === 'entregado' ? 'pendiente' : 'entregado';
-    try {
-      await updateDoc(doc(db, 'pedidos_preventa', id), { estado: nuevoEstado });
-    } catch (error) {
-      console.error("Error al actualizar estado:", error);
+    
+    const mensajeConfirmacion = estadoActual === 'entregado' 
+      ? "¿Seguro que quieres regresar este pedido a PENDIENTE?" 
+      : "¿Confirmas que este pedido ya fue ENTREGADO?";
+
+    if(confirm(mensajeConfirmacion)) {
+      try {
+        await updateDoc(doc(db, 'pedidos_preventa', id), { estado: nuevoEstado });
+      } catch (error) {
+        console.error("Error al actualizar estado:", error);
+      }
     }
   };
 
