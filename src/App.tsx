@@ -36,9 +36,9 @@ const USUARIOS = [
 
 export default function App() {
   // --- ESTADOS ---
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [pedidos, setPedidos] = useState([]);
+  const [pedidos, setPedidos] = useState<any[]>([]);
   
   // Estados Formulario Login
   const [email, setEmail] = useState('');
@@ -63,7 +63,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     signInWithEmailAndPassword(auth, email, password)
@@ -90,7 +90,7 @@ export default function App() {
   }, [user]);
 
   // --- 3. GUARDAR PEDIDO ---
-  const agregarPedido = async (e) => {
+  const agregarPedido = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vendedorActivo || !cliente || !cantidad || !fechaEntrega) return;
 
@@ -117,7 +117,7 @@ export default function App() {
   };
 
   // --- 4. BORRAR PEDIDO ---
-  const borrarPedido = async (id) => {
+  const borrarPedido = async (id: string) => {
     if(confirm("¿Estás seguro de eliminar este pedido?")) {
       try {
         await deleteDoc(doc(db, 'pedidos_preventa', id));
@@ -135,11 +135,11 @@ export default function App() {
   };
 
   // --- 6. CÁLCULOS ESTADÍSTICOS ---
-  const totalCartones = useMemo(() => pedidos.reduce((sum, p) => sum + p.cantidad, 0), [pedidos]);
+  const totalCartones = useMemo(() => pedidos.reduce((sum: number, p: any) => sum + p.cantidad, 0), [pedidos]);
   
   const totalesPorVendedor = useMemo(() => {
-    const totales = { Granja: 0, Yulia: 0, Samuel: 0, Merly: 0 };
-    pedidos.forEach(p => { 
+    const totales: Record<string, number> = { Granja: 0, Yulia: 0, Samuel: 0, Merly: 0 };
+    pedidos.forEach((p: any) => { 
       if (totales[p.vendedor] !== undefined) {
         totales[p.vendedor] += p.cantidad; 
       }
@@ -161,7 +161,7 @@ export default function App() {
               src="/logo.jpg" 
               alt="Logo Huevos Queens" 
               className="h-32 object-contain drop-shadow-md"
-              onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/150?text=Falta+Logo' }} 
+              onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/150?text=Falta+Logo' }} 
             />
           </div>
 
@@ -205,7 +205,7 @@ export default function App() {
               src="/logo.jpg" 
               alt="Logo Huevos Queens" 
               className="h-16 object-contain drop-shadow-sm"
-              onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/64?text=Logo' }} 
+              onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/64?text=Logo' }} 
             />
 
             <div>
