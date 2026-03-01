@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   PlusCircle, Trash2, Calendar, 
-  Search, LogOut, Bell, User, ShoppingCart, CheckCircle
+  Search, LogOut, Bell, User, ShoppingCart, CheckCircle,
+  MapPin, Phone, FileText, Clock
 } from 'lucide-react';
 
 // --- IMPORTACIONES DE FIREBASE ---
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
 // --- CONFIGURACIÓN DE FIREBASE (Con tu clave real) ---
 const firebaseConfig = {
@@ -51,6 +52,12 @@ export default function App() {
   const [cantidad, setCantidad] = useState('');
   const [tipoHuevo, setTipoHuevo] = useState('A');
   const [fechaEntrega, setFechaEntrega] = useState('');
+  
+  // NUEVOS CAMPOS OPCIONALES
+  const [direccion, setDireccion] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [notasExtra, setNotasExtra] = useState('');
+
   const [busqueda, setBusqueda] = useState('');
   const [notificacion, setNotificacion] = useState('');
 
@@ -75,7 +82,6 @@ export default function App() {
     if (!user) return;
     const q = query(collection(db, 'pedidos_preventa'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      // AQUÍ ESTÁ EL ARREGLO: Agregamos : any[]
       const pedidosArray: any[] = [];
       snapshot.forEach((doc) => {
         pedidosArray.push({ id: doc.id, ...doc.data() });
@@ -90,6 +96,16 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // --- FUNCIÓN PARA OBTENER EL DÍA DE LA SEMANA ---
+  const obtenerNombreDia = (fechaString: string) => {
+    if (!fechaString) return '';
+    // Separar para evitar problemas de zona horaria al crear la fecha
+    const [year, month, day] = fechaString.split('-');
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    return dias[date.getDay()];
+  };
+
   // --- 3. GUARDAR PEDIDO ---
   const agregarPedido = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,15 +118,22 @@ export default function App() {
         cantidad: Number(cantidad),
         tipo: tipoHuevo,
         fechaEntrega: fechaEntrega,
+        direccion: direccion, // Nuevo
+        telefono: telefono,   // Nuevo
+        notasExtra: notasExtra, // Nuevo
+        estado: 'pendiente',  // Nuevo: Todo pedido inicia como pendiente
         timestamp: new Date().toISOString(),
       });
 
       setNotificacion('✅ Pedido Registrado Exitosamente');
       setTimeout(() => setNotificacion(''), 3000);
       
-      // Limpiar formulario excepto el vendedor y la fecha
+      // Limpiar formulario
       setCliente('');
       setCantidad('');
+      setDireccion('');
+      setTelefono('');
+      setNotasExtra('');
     } catch (error) {
       console.error("Error guardando:", error);
       alert("Error al guardar el pedido. Verifica tu conexión o las reglas de Firebase.");
@@ -119,7 +142,7 @@ export default function App() {
 
   // --- 4. BORRAR PEDIDO ---
   const borrarPedido = async (id: string) => {
-    if(confirm("¿Estás seguro de eliminar este pedido?")) {
+    if(confirm("¿Estás seguro de eliminar este pedido completamente?")) {
       try {
         await deleteDoc(doc(db, 'pedidos_preventa', id));
       } catch (error) {
@@ -128,9 +151,32 @@ export default function App() {
     }
   };
 
+  // --- CAMBIAR ESTADO A ENTREGADO ---
+  const cambiarEstadoPedido = async (id: string, estadoActual: string) => {
+    const nuevoEstado = estadoActual === 'entregado' ? 'pendiente' : 'entregado';
+    try {
+      await updateDoc(doc(db, 'pedidos_preventa', id), {
+        estado: nuevoEstado
+      });
+    } catch (error) {
+      console.error("Error al actualizar estado:", error);
+    }
+  };
+
   // --- 5. ENVIAR NOTIFICACIÓN WHATSAPP ---
   const notificarWhatsApp = () => {
-    const mensaje = `🚨 *NUEVO PEDIDO REGISTRADO* 🚨%0A👤 Vendedor: *${vendedorActivo}*%0A🤝 Cliente: *${cliente}*%0A📦 Cantidad: *${cantidad} cartones de ${tipoHuevo}*%0A📅 Para entregar el: *${fechaEntrega}*%0A%0A_Por favor actualizar el inventario disponible._`;
+    let mensaje = `🚨 *NUEVO PEDIDO REGISTRADO* 🚨%0A`;
+    mensaje += `👤 Vendedor: *${vendedorActivo}*%0A`;
+    mensaje += `🤝 Cliente: *${cliente}*%0A`;
+    mensaje += `📦 Cantidad: *${cantidad} cartones de ${tipoHuevo}*%0A`;
+    mensaje += `📅 Para entregar el: *${obtenerNombreDia(fechaEntrega)}, ${fechaEntrega}*%0A`;
+    
+    if (telefono) mensaje += `📱 Teléfono: ${telefono}%0A`;
+    if (direccion) mensaje += `📍 Dirección: ${direccion}%0A`;
+    if (notasExtra) mensaje += `📝 Notas: ${notasExtra}%0A`;
+    
+    mensaje += `%0A_Por favor actualizar el inventario disponible._`;
+    
     const url = `https://wa.me/?text=${mensaje}`;
     window.open(url, '_blank');
   };
@@ -138,11 +184,24 @@ export default function App() {
   // --- 6. CÁLCULOS ESTADÍSTICOS ---
   const totalCartones = useMemo(() => pedidos.reduce((sum: number, p: any) => sum + p.cantidad, 0), [pedidos]);
   
+  // Total por persona
   const totalesPorVendedor = useMemo(() => {
     const totales: Record<string, number> = { Granja: 0, Yulia: 0, Samuel: 0, Merly: 0 };
     pedidos.forEach((p: any) => { 
       if (totales[p.vendedor] !== undefined) {
         totales[p.vendedor] += p.cantidad; 
+      }
+    });
+    return totales;
+  }, [pedidos]);
+
+  // Total por TIPO DE HUEVO
+  const totalesPorTipo = useMemo(() => {
+    const totales: Record<string, number> = {};
+    TIPOS_HUEVO.forEach(t => totales[t] = 0);
+    pedidos.forEach((p: any) => {
+      if (totales[p.tipo] !== undefined) {
+        totales[p.tipo] += p.cantidad;
       }
     });
     return totales;
@@ -156,7 +215,6 @@ export default function App() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border-t-8 border-yellow-500">
           
-          {/* AQUÍ VA TU LOGO EN EL LOGIN */}
           <div className="flex justify-center mb-6">
             <img 
               src="/logo.jpg" 
@@ -167,7 +225,7 @@ export default function App() {
           </div>
 
           <h1 className="text-2xl font-black text-center text-slate-800 mb-2">Pedidos Huevos Queens</h1>
-          <p className="text-center text-gray-500 text-sm mb-6 font-medium">Sistema de Preventas</p>
+          <p className="text-center text-gray-500 text-sm mb-6 font-medium">Sistema de Preventas y Entregas</p>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">Correo Electrónico</label>
@@ -200,18 +258,15 @@ export default function App() {
         {/* CABECERA */}
         <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col md:flex-row justify-between items-center border border-gray-200 gap-4">
           <div className="flex items-center gap-4 w-full md:w-auto">
-            
-            {/* AQUÍ VA TU LOGO EN LA APP */}
             <img 
               src="/logo.jpg" 
               alt="Logo Huevos Queens" 
               className="h-16 object-contain drop-shadow-sm"
               onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/64?text=Logo' }} 
             />
-
             <div>
-              <h1 className="text-2xl font-black text-slate-800">Control de Preventas</h1>
-              <p className="text-sm text-yellow-600 font-bold flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Sincronizado en Tiempo Real</p>
+              <h1 className="text-2xl font-black text-slate-800">Control de Pedidos</h1>
+              <p className="text-sm text-yellow-600 font-bold flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Logística y Preventas</p>
             </div>
           </div>
           <button onClick={() => signOut(auth)} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-700 font-bold w-full md:w-auto justify-center transition-colors">
@@ -227,7 +282,7 @@ export default function App() {
               <div className="absolute top-0 left-0 w-full h-2 bg-yellow-500"></div>
               <h2 className="font-black text-slate-800 text-xl mb-5 flex items-center gap-2"><PlusCircle className="text-yellow-500"/> Registrar Nuevo Pedido</h2>
               
-              <form onSubmit={agregarPedido} className="space-y-5">
+              <form onSubmit={agregarPedido} className="space-y-4">
                 {/* SELECCIÓN DE USUARIO */}
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 block">1. ¿Quién registra el pedido?</label>
@@ -266,10 +321,29 @@ export default function App() {
 
                     <div>
                       <label className="text-xs font-bold text-gray-500 mb-1 block">Para entregar el (Día)</label>
-                      <input type="date" required className="w-full p-3 border-2 border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 outline-none transition-all font-bold text-slate-700 cursor-pointer" value={fechaEntrega} onChange={e => setFechaEntrega(e.target.value)} />
+                      <div className="flex gap-2 items-center">
+                        <input type="date" required className="flex-1 p-3 border-2 border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 outline-none transition-all font-bold text-slate-700 cursor-pointer" value={fechaEntrega} onChange={e => setFechaEntrega(e.target.value)} />
+                        {fechaEntrega && (
+                           <div className={`px-4 py-3 rounded-xl font-black text-sm border-2 ${['Lunes', 'Miércoles', 'Viernes'].includes(obtenerNombreDia(fechaEntrega)) ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-100 text-yellow-700 border-yellow-200'}`}>
+                             {obtenerNombreDia(fechaEntrega)}
+                           </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* SECCIÓN OPCIONAL */}
+                    <div className="border border-dashed border-gray-300 p-4 rounded-xl bg-gray-50/50">
+                       <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 block flex items-center gap-1"><MapPin size={14}/> Datos de Entrega (Opcional)</label>
+                       <div className="space-y-3">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-yellow-400" value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="📱 Teléfono" />
+                            <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-yellow-400" value={direccion} onChange={e => setDireccion(e.target.value)} placeholder="📍 Dirección" />
+                         </div>
+                         <textarea className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-yellow-400" value={notasExtra} onChange={e => setNotasExtra(e.target.value)} placeholder="📝 Notas extra (ej: Dejar en portería)..." rows={2} />
+                       </div>
                     </div>
                     
-                    <div className="pt-4 border-t border-gray-100 flex gap-3">
+                    <div className="pt-2 flex gap-3">
                       <button type="submit" className="flex-1 bg-slate-800 text-white font-black py-4 rounded-xl hover:bg-slate-900 shadow-xl transition-transform active:scale-95 flex items-center justify-center gap-2 text-lg">
                          <ShoppingCart size={20}/> Guardar Pedido
                       </button>
@@ -290,11 +364,27 @@ export default function App() {
             <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden border border-slate-700">
               <div className="absolute -right-4 -top-4 opacity-5 text-yellow-500"><ShoppingCart size={150}/></div>
               <h3 className="text-sm text-yellow-400 font-bold uppercase tracking-wider mb-2 relative z-10 flex items-center gap-2"><CheckCircle size={16}/> Resumen General</h3>
-              <div className="flex items-baseline gap-2 mb-6 relative z-10 border-b border-slate-700 pb-4">
+              <div className="flex items-baseline gap-2 mb-4 relative z-10">
                  <span className="text-5xl font-black text-white drop-shadow-lg">{totalCartones}</span>
                  <span className="text-xl text-slate-400 font-medium">Cartones Pedidos</span>
               </div>
               
+              {/* DESGLOSE POR TIPO DE HUEVO */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-6 relative z-10 border-b border-slate-700 pb-4">
+                 {TIPOS_HUEVO.map(tipo => {
+                    if (totalesPorTipo[tipo] > 0) {
+                      return (
+                         <div key={tipo} className="bg-slate-700/80 p-2 rounded-lg text-center border border-slate-600 shadow-sm">
+                           <p className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{tipo}</p>
+                           <p className="text-lg font-black text-yellow-400">{totalesPorTipo[tipo]}</p>
+                         </div>
+                      );
+                    }
+                    return null;
+                 })}
+              </div>
+
+              {/* DESGLOSE POR VENDEDOR */}
               <div className="grid grid-cols-2 gap-3 relative z-10">
                 {USUARIOS.map(u => (
                   <div key={u.nombre} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-600 shadow-inner">
@@ -321,27 +411,54 @@ export default function App() {
                   const perfil = USUARIOS.find(u => u.nombre === pedido.vendedor) || USUARIOS[0];
                   // Formatear la fecha (hora de registro)
                   const fechaRegistro = new Date(pedido.timestamp).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
+                  const diaEntrega = obtenerNombreDia(pedido.fechaEntrega);
 
                   return (
-                    <div key={pedido.id} className={`p-5 rounded-2xl border-l-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all hover:shadow-md bg-white border ${perfil.color.split(' ')[2]} hover:scale-[1.01]`}>
-                       <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                             <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full text-white shadow-sm ${perfil.badge}`}>{pedido.vendedor}</span>
-                             <span className="text-xs text-gray-400 font-medium flex items-center gap-1"><Calendar size={12}/> Registrado: {fechaRegistro}</span>
-                          </div>
-                          <h3 className="font-black text-xl text-slate-800 mb-1">{pedido.cliente}</h3>
-                          <p className="text-sm text-slate-600 font-medium bg-slate-50 inline-block px-3 py-1 rounded-lg border border-slate-100">
-                            🚚 Entregar el: <span className="font-black text-slate-800">{pedido.fechaEntrega}</span>
-                          </p>
-                       </div>
+                    <div key={pedido.id} className={`p-5 rounded-2xl border-l-8 shadow-sm flex flex-col gap-4 transition-all hover:shadow-md bg-white border hover:scale-[1.01] ${pedido.estado === 'entregado' ? 'border-l-green-500 opacity-80' : perfil.color.split(' ')[2]}`}>
                        
-                       <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100 mt-2 sm:mt-0">
-                          <div className={`text-center px-6 py-3 rounded-xl ${perfil.color} border-none shadow-sm`}>
-                            <p className="text-3xl font-black">{pedido.cantidad}</p>
-                            <p className="text-[11px] font-black uppercase tracking-wider opacity-80 mt-1">CARTONES {pedido.tipo}</p>
-                          </div>
-                          <button onClick={() => borrarPedido(pedido.id)} className="p-3 bg-gray-50 rounded-xl hover:bg-red-500 hover:text-white transition-colors text-gray-400 border border-gray-200 shadow-sm" title="Eliminar este pedido"><Trash2 size={20}/></button>
+                       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 w-full">
+                         <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                               <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full text-white shadow-sm ${perfil.badge}`}>{pedido.vendedor}</span>
+                               <span className="text-xs text-gray-400 font-medium flex items-center gap-1"><Calendar size={12}/> {fechaRegistro}</span>
+                            </div>
+                            <h3 className={`font-black text-xl mb-1 ${pedido.estado === 'entregado' ? 'text-gray-500 line-through' : 'text-slate-800'}`}>{pedido.cliente}</h3>
+                            <p className="text-sm text-slate-600 font-medium bg-slate-50 inline-block px-3 py-1 rounded-lg border border-slate-100">
+                              🚚 Entregar el: <span className="font-black text-slate-800">{diaEntrega}, {pedido.fechaEntrega}</span>
+                            </p>
+                         </div>
+                         
+                         <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100 mt-2 sm:mt-0">
+                            {/* BOTÓN DE ESTADO (ENTREGADO/PENDIENTE) */}
+                            <button 
+                               onClick={() => cambiarEstadoPedido(pedido.id, pedido.estado)}
+                               className={`px-4 py-3 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border ${
+                                 pedido.estado === 'entregado' 
+                                   ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' 
+                                   : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                               }`}
+                            >
+                               {pedido.estado === 'entregado' ? <><CheckCircle size={20}/> <span className="text-[10px] uppercase">Entregado</span></> : <><Clock size={20}/> <span className="text-[10px] uppercase">Pendiente</span></>}
+                            </button>
+
+                            <div className={`text-center px-4 py-2 rounded-xl border-none shadow-sm ${pedido.estado === 'entregado' ? 'bg-gray-100 text-gray-500' : perfil.color}`}>
+                              <p className="text-3xl font-black">{pedido.cantidad}</p>
+                              <p className="text-[11px] font-black uppercase tracking-wider opacity-80 mt-1">TIPO {pedido.tipo}</p>
+                            </div>
+
+                            <button onClick={() => borrarPedido(pedido.id)} className="p-3 bg-gray-50 rounded-xl hover:bg-red-500 hover:text-white transition-colors text-gray-400 border border-gray-200 shadow-sm" title="Eliminar este pedido"><Trash2 size={20}/></button>
+                         </div>
                        </div>
+
+                       {/* DATOS EXTRA DEL PEDIDO (Ocultos si no hay) */}
+                       {(pedido.telefono || pedido.direccion || pedido.notasExtra) && (
+                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-sm grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-600">
+                            {pedido.telefono && <p className="flex items-center gap-2"><Phone size={14} className="text-blue-500"/> {pedido.telefono}</p>}
+                            {pedido.direccion && <p className="flex items-center gap-2"><MapPin size={14} className="text-red-500"/> {pedido.direccion}</p>}
+                            {pedido.notasExtra && <p className="md:col-span-2 flex items-start gap-2 mt-1"><FileText size={14} className="text-yellow-600 mt-0.5"/> <span className="italic font-medium">{pedido.notasExtra}</span></p>}
+                         </div>
+                       )}
+
                     </div>
                   );
                 })}
