@@ -41,7 +41,12 @@ export default function App() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [notificacionesHistorial, setNotificacionesHistorial] = useState<any[]>([]);
-  const [mostrarNotificaciones, setMostrarNotificaciones] = useState(false);
+  
+  // Estados para Popups de Notificaciones Separadas
+  const [mostrarNuevos, setMostrarNuevos] = useState(false);
+  const [mostrarEntregas, setMostrarEntregas] = useState(false);
+  const [ultimaVistaNuevos, setUltimaVistaNuevos] = useState(localStorage.getItem('ultimaVistaNuevos') || '0');
+  const [ultimaVistaEntregas, setUltimaVistaEntregas] = useState(localStorage.getItem('ultimaVistaEntregas') || '0');
   
   // Login
   const [email, setEmail] = useState('');
@@ -92,7 +97,8 @@ export default function App() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notificacionesRef.current && !notificacionesRef.current.contains(event.target as Node)) {
-        setMostrarNotificaciones(false);
+        setMostrarNuevos(false);
+        setMostrarEntregas(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -122,7 +128,7 @@ export default function App() {
       snapshot.forEach((doc) => {
         notifArray.push({ id: doc.id, ...doc.data() });
       });
-      setNotificacionesHistorial(notifArray.slice(0, 20)); // Limitar a las últimas 20 para no saturar
+      setNotificacionesHistorial(notifArray.slice(0, 30)); // Aumentado a 30 para tener buen historial en ambas listas
     });
 
     return () => {
@@ -151,6 +157,33 @@ export default function App() {
   const formatearFechaHora = (isoString: string) => {
     const d = new Date(isoString);
     return `${d.toLocaleDateString('es-CO', { day:'numeric', month:'short' })} ${d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })}`;
+  };
+
+  // --- LÓGICA DE NOTIFICACIONES SEPARADAS ---
+  const notifNuevos = notificacionesHistorial.filter(n => n.tipo !== 'entregado');
+  const notifEntregas = notificacionesHistorial.filter(n => n.tipo === 'entregado');
+
+  const unreadNuevosCount = notifNuevos.filter(n => n.timestamp > ultimaVistaNuevos).length;
+  const unreadEntregasCount = notifEntregas.filter(n => n.timestamp > ultimaVistaEntregas).length;
+
+  const abrirNuevos = () => {
+    setMostrarNuevos(!mostrarNuevos);
+    setMostrarEntregas(false);
+    if (!mostrarNuevos) {
+      const now = new Date().toISOString();
+      setUltimaVistaNuevos(now);
+      localStorage.setItem('ultimaVistaNuevos', now);
+    }
+  };
+
+  const abrirEntregas = () => {
+    setMostrarEntregas(!mostrarEntregas);
+    setMostrarNuevos(false);
+    if (!mostrarEntregas) {
+      const now = new Date().toISOString();
+      setUltimaVistaEntregas(now);
+      localStorage.setItem('ultimaVistaEntregas', now);
+    }
   };
 
   // --- CREAR NOTIFICACIÓN EN LA BASE DE DATOS ---
@@ -355,7 +388,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#0a3a23] flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border-t-8 border-[#d4af37]">
-          <div className="flex justify-center mb-6"><img src="/logo.jpg" alt="Logo Huevos Queens" className="h-32 object-contain drop-shadow-md" onError={(e: any) => { e.currentTarget.src = '[https://via.placeholder.com/150?text=Logo](https://via.placeholder.com/150?text=Logo)' }} /></div>
+          <div className="flex justify-center mb-6"><img src="/logo.jpg" alt="Logo Huevos Queens" className="h-32 object-contain drop-shadow-md" onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/150?text=Logo' }} /></div>
           <h1 className="text-2xl font-black text-center text-[#0f5132] mb-2">Pedidos Huevos Queens</h1>
           <p className="text-center text-gray-500 text-sm mb-6 font-bold">Sistema de Preventas Logística</p>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -387,39 +420,47 @@ export default function App() {
 
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* CABECERA Y NOTIFICACIONES PUSH */}
+        {/* CABECERA Y NOTIFICACIONES PUSH SEPARADAS */}
         <div className="bg-white rounded-3xl shadow-sm p-4 flex justify-between items-center border border-gray-200 relative z-30">
           <div className="flex items-center gap-3 md:gap-4">
-            <img src="/logo.jpg" alt="Logo Huevos Queens" className="h-12 md:h-16 object-contain drop-shadow-sm rounded-full bg-white p-1" onError={(e: any) => { e.currentTarget.src = '[https://via.placeholder.com/64?text=Logo](https://via.placeholder.com/64?text=Logo)' }} />
+            <img src="/logo.jpg" alt="Logo Huevos Queens" className="h-12 md:h-16 object-contain drop-shadow-sm rounded-full bg-white p-1" onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/64?text=Logo' }} />
             <div>
               <h1 className="text-lg md:text-2xl font-black text-[#0f5132] leading-tight">Control Pedidos</h1>
               <p className="text-xs md:text-sm text-[#d4af37] font-bold flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Logística Activa</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-             <div className="relative" ref={notificacionesRef}>
+          <div className="flex items-center gap-2 sm:gap-4" ref={notificacionesRef}>
+             
+             {/* BOTÓN 1: ENTREGAS REALIZADAS */}
+             <div className="relative">
                 <button 
-                  onClick={() => setMostrarNotificaciones(!mostrarNotificaciones)}
-                  className="p-3 bg-[#fdfaf2] text-[#d4af37] border border-[#f3e7c8] rounded-full hover:bg-[#f3e7c8] relative shadow-sm transition-transform active:scale-95"
+                  onClick={abrirEntregas}
+                  className={`p-3 rounded-full relative shadow-sm transition-transform active:scale-95 ${mostrarEntregas ? 'bg-[#c3e6cb] text-[#0f5132]' : 'bg-[#e6f4ea] text-[#0f5132] border border-[#c3e6cb] hover:bg-[#c3e6cb]'}`}
+                  title="Ver Entregas Recientes"
                 >
-                   <Bell size={20}/>
-                   <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                   <PackageCheck size={20}/>
+                   {unreadEntregasCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-5 w-5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-5 w-5 bg-green-600 text-white text-[10px] font-bold items-center justify-center border-2 border-white shadow-sm">{unreadEntregasCount}</span>
+                      </span>
+                   )}
                 </button>
                 
-                {/* POPUP DE NOTIFICACIONES */}
-                {mostrarNotificaciones && (
-                   <div className="absolute top-14 right-0 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50">
-                      <div className="bg-[#0f5132] text-white p-4 font-black flex justify-between items-center">
-                        <span className="flex items-center gap-2"><Bell size={16} className="text-[#d4af37]"/> Historial Reciente</span>
-                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{notificacionesHistorial.length} Eventos</span>
+                {/* POPUP ENTREGAS */}
+                {mostrarEntregas && (
+                   <div className="absolute top-14 right-0 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50">
+                      <div className="bg-[#e6f4ea] text-[#0f5132] p-4 font-black flex justify-between items-center border-b border-[#c3e6cb]">
+                        <span className="flex items-center gap-2"><PackageCheck size={18}/> Entregas Recientes</span>
+                        <span className="text-xs bg-white px-2 py-0.5 rounded-full shadow-sm">{notifEntregas.length}</span>
                       </div>
                       <div className="max-h-80 overflow-y-auto custom-scrollbar p-2 space-y-2 bg-slate-50">
-                         {notificacionesHistorial.length === 0 ? (
-                           <p className="text-center text-gray-400 text-sm py-8 font-medium">No hay notificaciones aún.</p>
+                         {notifEntregas.length === 0 ? (
+                           <p className="text-center text-gray-400 text-sm py-8 font-medium">No hay entregas recientes.</p>
                          ) : (
-                           notificacionesHistorial.map(n => (
-                             <div key={n.id} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-sm">
+                           notifEntregas.map(n => (
+                             <div key={n.id} className="bg-white p-3 rounded-xl border border-green-100 shadow-sm text-sm border-l-4 border-l-green-500">
                                <p className="text-slate-700 font-medium leading-tight">{n.mensaje}</p>
                                <span className="text-[10px] text-gray-400 font-bold mt-2 block">{formatearFechaHora(n.timestamp)}</span>
                              </div>
@@ -430,7 +471,46 @@ export default function App() {
                 )}
              </div>
 
-             <button onClick={() => signOut(auth)} className="hidden md:flex items-center gap-2 px-4 py-3 bg-red-50 text-red-600 border border-red-100 rounded-xl hover:bg-red-100 font-bold transition-colors">
+             {/* BOTÓN 2: PEDIDOS NUEVOS/EDITADOS */}
+             <div className="relative">
+                <button 
+                  onClick={abrirNuevos}
+                  className={`p-3 rounded-full relative shadow-sm transition-transform active:scale-95 ${mostrarNuevos ? 'bg-[#f3e7c8] text-[#0f5132]' : 'bg-[#fdfaf2] text-[#d4af37] border border-[#f3e7c8] hover:bg-[#f3e7c8]'}`}
+                  title="Ver Pedidos Nuevos"
+                >
+                   <Bell size={20}/>
+                   {unreadNuevosCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-5 w-5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 text-white text-[10px] font-bold items-center justify-center border-2 border-white shadow-sm">{unreadNuevosCount}</span>
+                      </span>
+                   )}
+                </button>
+                
+                {/* POPUP NUEVOS PEDIDOS */}
+                {mostrarNuevos && (
+                   <div className="absolute top-14 right-0 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50">
+                      <div className="bg-[#0f5132] text-white p-4 font-black flex justify-between items-center">
+                        <span className="flex items-center gap-2"><Bell size={16} className="text-[#d4af37]"/> Pedidos & Novedades</span>
+                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{notifNuevos.length}</span>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto custom-scrollbar p-2 space-y-2 bg-slate-50">
+                         {notifNuevos.length === 0 ? (
+                           <p className="text-center text-gray-400 text-sm py-8 font-medium">No hay pedidos recientes.</p>
+                         ) : (
+                           notifNuevos.map(n => (
+                             <div key={n.id} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-sm border-l-4 border-l-[#d4af37]">
+                               <p className="text-slate-700 font-medium leading-tight">{n.mensaje}</p>
+                               <span className="text-[10px] text-gray-400 font-bold mt-2 block">{formatearFechaHora(n.timestamp)}</span>
+                             </div>
+                           ))
+                         )}
+                      </div>
+                   </div>
+                )}
+             </div>
+
+             <button onClick={() => signOut(auth)} className="hidden md:flex items-center gap-2 px-4 py-3 bg-red-50 text-red-600 border border-red-100 rounded-xl hover:bg-red-100 font-bold transition-colors ml-2">
                <LogOut size={16}/> Salir
              </button>
           </div>
