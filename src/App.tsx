@@ -324,6 +324,8 @@ export default function App() {
     return sum + items.reduce((s: number, i: any) => s + Number(i.cantidad), 0);
   }, 0), [pedidosPendientes]);
 
+  // ELIMINAMOS AQUÍ LA VARIABLE `pendientesPorVendedor` QUE CAUSABA EL ERROR EN VERCEL.
+
   const pendientesPorTipo = useMemo(() => {
     const totales: Record<string, number> = {};
     TIPOS_HUEVO.forEach(t => totales[t] = 0);
