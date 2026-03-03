@@ -131,14 +131,6 @@ export default function App() {
     };
   }, [user]);
 
-  // Expandir todas las fechas automáticamente al cargar la primera vez
-  useEffect(() => {
-    if (pedidos.length > 0 && fechasExpandidas.length === 0) {
-      const fechasUnicas = Array.from(new Set(pedidos.map(p => p.fechaEntrega)));
-      setFechasExpandidas(fechasUnicas as string[]);
-    }
-  }, [pedidos]);
-
   // --- FUNCIONES AUXILIARES ---
   const obtenerNombreDia = (fechaString: string) => {
     if (!fechaString) return '';
@@ -225,6 +217,7 @@ export default function App() {
         setNotificacion('✅ Pedido Registrado');
         registrarNotificacion(`🛒 ${vendedorActivo} registró ${cantTotal} cartones para ${cliente}.`, 'nuevo');
         
+        // Al registrar un pedido nuevo, sí queremos abrir ese día para que el usuario vea su pedido recién creado
         if (!fechasExpandidas.includes(fechaEntrega)) {
            setFechasExpandidas([...fechasExpandidas, fechaEntrega]);
         }
