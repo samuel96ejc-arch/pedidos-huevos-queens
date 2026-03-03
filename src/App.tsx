@@ -131,6 +131,14 @@ export default function App() {
     };
   }, [user]);
 
+  // Expandir todas las fechas automáticamente al cargar la primera vez
+  useEffect(() => {
+    if (pedidos.length > 0 && fechasExpandidas.length === 0) {
+      const fechasUnicas = Array.from(new Set(pedidos.map(p => p.fechaEntrega)));
+      setFechasExpandidas(fechasUnicas as string[]);
+    }
+  }, [pedidos]);
+
   // --- FUNCIONES AUXILIARES ---
   const obtenerNombreDia = (fechaString: string) => {
     if (!fechaString) return '';
@@ -300,7 +308,7 @@ export default function App() {
     window.open(`https://wa.me/?text=${mensaje}`, '_blank');
   };
 
-  // --- 6. CÁLCULOS ESTADÍSTICOS (RESTANDO ENTREGADOS) ---
+  // --- 6. CÁLCULOS ESTADÍSTICOS ---
   
   // Total Histórico Absoluto (Para panel pequeño)
   const totalHistoricoAbsoluto = useMemo(() => pedidos.reduce((sum: number, p: any) => {
@@ -315,17 +323,6 @@ export default function App() {
     const items = p.items || [{ cantidad: p.cantidad || 0 }];
     return sum + items.reduce((s: number, i: any) => s + Number(i.cantidad), 0);
   }, 0), [pedidosPendientes]);
-  
-  const pendientesPorVendedor = useMemo(() => {
-    const totales: Record<string, number> = { Granja: 0, Yulia: 0, Samuel: 0, Merly: 0 };
-    pedidosPendientes.forEach((p: any) => { 
-      if (totales[p.vendedor] !== undefined) {
-        const items = p.items || [{ cantidad: p.cantidad || 0 }];
-        totales[p.vendedor] += items.reduce((s: number, i: any) => s + Number(i.cantidad), 0); 
-      }
-    });
-    return totales;
-  }, [pedidosPendientes]);
 
   const pendientesPorTipo = useMemo(() => {
     const totales: Record<string, number> = {};
@@ -365,7 +362,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm border-t-8 border-yellow-500">
-          <div className="flex justify-center mb-6"><img src="/logo.jpg" alt="Logo Huevos Queens" className="h-32 object-contain drop-shadow-md" onError={(e: any) => { e.currentTarget.src = '[https://via.placeholder.com/150?text=Logo](https://via.placeholder.com/150?text=Logo)' }} /></div>
+          <div className="flex justify-center mb-6"><img src="/logo.jpg" alt="Logo Huevos Queens" className="h-32 object-contain drop-shadow-md" onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/150?text=Logo' }} /></div>
           <h1 className="text-2xl font-black text-center text-slate-800 mb-2">Pedidos Huevos Queens</h1>
           <p className="text-center text-gray-500 text-sm mb-6 font-medium">Sistema de Preventas Logística</p>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -400,7 +397,7 @@ export default function App() {
         {/* CABECERA Y NOTIFICACIONES PUSH */}
         <div className="bg-white rounded-2xl shadow-sm p-4 flex justify-between items-center border border-gray-200 relative z-30">
           <div className="flex items-center gap-3 md:gap-4">
-            <img src="/logo.jpg" alt="Logo Huevos Queens" className="h-12 md:h-16 object-contain drop-shadow-sm" onError={(e: any) => { e.currentTarget.src = '[https://via.placeholder.com/64?text=Logo](https://via.placeholder.com/64?text=Logo)' }} />
+            <img src="/logo.jpg" alt="Logo Huevos Queens" className="h-12 md:h-16 object-contain drop-shadow-sm" onError={(e: any) => { e.currentTarget.src = 'https://via.placeholder.com/64?text=Logo' }} />
             <div>
               <h1 className="text-lg md:text-2xl font-black text-slate-800 leading-tight">Control Pedidos</h1>
               <p className="text-xs md:text-sm text-yellow-600 font-bold flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> Logística Activa</p>
