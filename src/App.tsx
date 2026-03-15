@@ -128,7 +128,7 @@ export default function App() {
       snapshot.forEach((doc) => {
         notifArray.push({ id: doc.id, ...doc.data() });
       });
-      setNotificacionesHistorial(notifArray.slice(0, 30)); // Aumentado a 30 para tener buen historial en ambas listas
+      setNotificacionesHistorial(notifArray.slice(0, 30)); 
     });
 
     return () => {
@@ -250,7 +250,6 @@ export default function App() {
         setNotificacion('✅ Pedido Registrado');
         registrarNotificacion(`🛒 ${vendedorActivo} registró ${cantTotal} cartones para ${cliente}.`, 'nuevo');
         
-        // Al registrar un pedido nuevo, sí queremos abrir ese día para que el usuario vea su pedido recién creado
         if (!fechasExpandidas.includes(fechaEntrega)) {
            setFechasExpandidas([...fechasExpandidas, fechaEntrega]);
         }
@@ -336,13 +335,11 @@ export default function App() {
 
   // --- 6. CÁLCULOS ESTADÍSTICOS ---
   
-  // Total Histórico Absoluto (Para panel pequeño)
   const totalHistoricoAbsoluto = useMemo(() => pedidos.reduce((sum: number, p: any) => {
     const items = p.items || [{ cantidad: p.cantidad || 0 }];
     return sum + items.reduce((s: number, i: any) => s + Number(i.cantidad), 0);
   }, 0), [pedidos]);
 
-  // Solo consideramos los PENDIENTES para la resta en tiempo real en los paneles visuales principales
   const pedidosPendientes = useMemo(() => pedidos.filter(p => p.estado !== 'entregado'), [pedidos]);
 
   const totalCartonesPendientes = useMemo(() => pedidosPendientes.reduce((sum: number, p: any) => {
@@ -362,19 +359,34 @@ export default function App() {
     return totales;
   }, [pedidosPendientes]);
 
-  const fechasOrdenadas = useMemo(() => Array.from(new Set(pedidos.map(p => p.fechaEntrega))).sort(), [pedidos]);
+  // ORDEN INVERTIDO: Las fechas más recientes/futuras arriba (descendente)
+  const fechasOrdenadas = useMemo(() => {
+     const unicas = Array.from(new Set(pedidos.map(p => p.fechaEntrega)));
+     return unicas.sort((a: any, b: any) => b.localeCompare(a));
+  }, [pedidos]);
 
-  // RESUMEN GENERAL POR FECHA (Para la nueva tabla)
+  // RESUMEN GENERAL POR FECHA (Con desglose por tipo de huevo)
   const resumenPorFechas = useMemo(() => {
      const resumen: any[] = [];
      fechasOrdenadas.forEach(fecha => {
         const pdia = pedidosPendientes.filter(p => p.fechaEntrega === fecha);
         if (pdia.length > 0) {
-           const cant = pdia.reduce((sum, p) => {
-              const it = p.items || [{ cantidad: p.cantidad || 0 }];
-              return sum + it.reduce((s:number, i:any) => s + Number(i.cantidad), 0);
-           }, 0);
-           resumen.push({ fecha, dia: obtenerNombreDia(fecha as string), cant });
+           let cant = 0;
+           const tipos: Record<string, number> = {};
+           
+           pdia.forEach(p => {
+              const items = p.items || [{ cantidad: p.cantidad || 0, tipo: p.tipo || 'A' }];
+              items.forEach((i:any) => {
+                 const cantidadNum = Number(i.cantidad);
+                 cant += cantidadNum;
+                 if (tipos[i.tipo]) {
+                    tipos[i.tipo] += cantidadNum;
+                 } else {
+                    tipos[i.tipo] = cantidadNum;
+                 }
+              });
+           });
+           resumen.push({ fecha, dia: obtenerNombreDia(fecha as string), cant, tipos });
         }
      });
      return resumen;
@@ -521,7 +533,7 @@ export default function App() {
           {/* COLUMNA IZQUIERDA: FORMULARIO Y RESUMEN GENERAL */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-6">
             
-            {/* NUEVO PANEL: RESUMEN GENERAL POR FECHA (SOLO PENDIENTES) */}
+            {/* NUEVO PANEL: RESUMEN GENERAL POR FECHA CON DESGLOSE */}
             <div className="bg-gradient-to-br from-[#0f5132] to-[#0a3a23] rounded-3xl p-6 text-white shadow-xl border border-[#166e44] relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
                
@@ -535,17 +547,31 @@ export default function App() {
                     🎉 ¡No hay pedidos pendientes para entregar!
                   </div>
                ) : (
-                 <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1 relative z-10">
+                 <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-1 relative z-10">
                    {resumenPorFechas.map(r => (
-                      <div key={r.fecha} className="flex justify-between items-center bg-white/10 p-3 rounded-2xl shadow-sm hover:bg-white/20 transition-colors backdrop-blur-sm border border-white/5">
-                         <div>
-                            <span className="block text-xs font-black uppercase text-[#d4af37]">{r.dia}</span>
-                            <span className="block font-bold text-white text-sm">{r.fecha}</span>
+                      <div key={r.fecha} className="flex flex-col bg-white/10 p-4 rounded-2xl shadow-sm hover:bg-white/20 transition-colors backdrop-blur-sm border border-white/5">
+                         
+                         <div className="flex justify-between items-center mb-2">
+                           <div>
+                              <span className="block text-xs font-black uppercase text-[#d4af37]">{r.dia}</span>
+                              <span className="block font-bold text-white text-sm">{r.fecha}</span>
+                           </div>
+                           <div className="bg-white text-[#0f5132] px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-inner">
+                              <span className="font-black text-xl leading-none">{r.cant}</span>
+                              <span className="text-[10px] uppercase font-bold text-gray-500">Ctns</span>
+                           </div>
                          </div>
-                         <div className="bg-white text-[#0f5132] px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-inner">
-                            <span className="font-black text-lg leading-none">{r.cant}</span>
-                            <span className="text-[10px] uppercase font-bold text-gray-500">Ctns</span>
+
+                         {/* AQUI ESTA EL DESGLOSE POR TIPO DE HUEVO */}
+                         <div className="flex flex-wrap gap-2 mt-2 pt-3 border-t border-white/10">
+                            {Object.entries(r.tipos).map(([tipo, cant]) => (
+                               <div key={tipo} className="bg-[#0f5132] px-2 py-1.5 rounded-lg border border-[#166e44] flex items-center gap-1.5 shadow-sm">
+                                 <span className="text-[10px] font-black text-gray-300 uppercase">{tipo}</span>
+                                 <span className="text-sm font-black text-[#d4af37] leading-none">{cant as React.ReactNode}</span>
+                               </div>
+                            ))}
                          </div>
+
                       </div>
                    ))}
                  </div>
